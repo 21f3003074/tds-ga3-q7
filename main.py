@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from youtube_transcript_api import YouTubeTranscriptApi
+import subprocess
 import re
+import os
 
 app = FastAPI()
 
@@ -18,43 +19,58 @@ class AskRequest(BaseModel):
     video_url: str
     topic: str
 
-
-def extract_video_id(url: str):
-    match = re.search(r"(?:v=|youtu\.be/)([^&?/]+)", url)
-    if not match:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-    return match.group(1)
-
-
 def seconds_to_hms(seconds: float):
-    seconds = int(seconds)
+    seconds = int(float(seconds))
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     secs = seconds % 60
     return f"{hours:02}:{minutes:02}:{secs:02}"
 
-
 @app.post("/ask")
 async def find_timestamp(request: AskRequest):
     try:
-        video_id = extract_video_id(request.video_url)
+        video_url = request.video_url
+        topic = request.topic.lower()
 
-        # Instantiate class (latest API style)
-        api = YouTubeTranscriptApi()
-        transcript = api.fetch(video_id)
+        # Download auto-generated subtitles using yt-dlp
+        subprocess.run([
+            "yt-dlp",
+            "--write-auto-sub",
+            "--sub-lang", "en",
+            "--skip-download",
+            video_url
+        ], check=True)
 
-        topic_lower = request.topic.lower()
+        # Find downloaded subtitle file
+        subtitle_file = None
+        for file in os.listdir():
+            if file.endswith(".vtt"):
+                subtitle_file = file
+                break
 
-        for entry in transcript:
-            # entry is dict in latest versions
-            text = entry.get("text", "").lower()
-            if topic_lower in text:
-                timestamp = seconds_to_hms(entry.get("start", 0))
-                return {
-                    "timestamp": timestamp,
-                    "video_url": request.video_url,
-                    "topic": request.topic
-                }
+        if not subtitle_file:
+            raise HTTPException(status_code=404, detail="No subtitles found")
+
+        # Read subtitles
+        with open(subtitle_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Search for topic
+        blocks = content.split("\n\n")
+
+        for block in blocks:
+            if topic in block.lower():
+                lines = block.split("\n")
+                if len(lines) > 1:
+                    timestamp_line = lines[0]
+                    start_time = timestamp_line.split(" --> ")[0]
+                    hh, mm, ss = start_time.split(":")
+                    ss = ss.split(".")[0]
+                    return {
+                        "timestamp": f"{hh}:{mm}:{ss}",
+                        "video_url": video_url,
+                        "topic": request.topic
+                    }
 
         raise HTTPException(status_code=404, detail="Topic not found")
 

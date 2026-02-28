@@ -39,13 +39,17 @@ async def find_timestamp(request: AskRequest):
     try:
         video_id = extract_video_id(request.video_url)
 
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        # Instantiate class (latest API style)
+        api = YouTubeTranscriptApi()
+        transcript = api.fetch(video_id)
 
         topic_lower = request.topic.lower()
 
         for entry in transcript:
-            if topic_lower in entry["text"].lower():
-                timestamp = seconds_to_hms(entry["start"])
+            # entry is dict in latest versions
+            text = entry.get("text", "").lower()
+            if topic_lower in text:
+                timestamp = seconds_to_hms(entry.get("start", 0))
                 return {
                     "timestamp": timestamp,
                     "video_url": request.video_url,

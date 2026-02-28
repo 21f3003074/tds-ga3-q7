@@ -35,7 +35,7 @@ def seconds_to_hms(seconds: float):
 async def find_timestamp(request: AskRequest):
     try:
         video_id = extract_video_id(request.video_url)
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en']).fetch()
 
         topic_lower = request.topic.lower()
 

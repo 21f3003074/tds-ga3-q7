@@ -6,6 +6,7 @@ import re
 
 app = FastAPI()
 
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,11 +19,13 @@ class AskRequest(BaseModel):
     video_url: str
     topic: str
 
+
 def extract_video_id(url: str):
-    match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
+    match = re.search(r"(?:v=|youtu\.be/)([^&?/]+)", url)
     if not match:
         raise HTTPException(status_code=400, detail="Invalid YouTube URL")
     return match.group(1)
+
 
 def seconds_to_hms(seconds: float):
     seconds = int(seconds)
@@ -31,17 +34,21 @@ def seconds_to_hms(seconds: float):
     secs = seconds % 60
     return f"{hours:02}:{minutes:02}:{secs:02}"
 
+
 @app.post("/ask")
 async def find_timestamp(request: AskRequest):
     try:
         video_id = extract_video_id(request.video_url)
-        transcript = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en']).fetch()
+
+        # Fetch transcript safely (latest API compatible)
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript = transcript_list.find_transcript(["en"]).fetch()
 
         topic_lower = request.topic.lower()
 
         for entry in transcript:
-            if topic_lower in entry["text"].lower():
-                timestamp = seconds_to_hms(entry["start"])
+            if topic_lower in entry.text.lower():
+                timestamp = seconds_to_hms(entry.start)
                 return {
                     "timestamp": timestamp,
                     "video_url": request.video_url,

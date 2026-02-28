@@ -6,7 +6,6 @@ import re
 
 app = FastAPI()
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,15 +39,13 @@ async def find_timestamp(request: AskRequest):
     try:
         video_id = extract_video_id(request.video_url)
 
-        # Fetch transcript safely (latest API compatible)
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        transcript = transcript_list.find_transcript(["en"]).fetch()
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
 
         topic_lower = request.topic.lower()
 
         for entry in transcript:
-            if topic_lower in entry.text.lower():
-                timestamp = seconds_to_hms(entry.start)
+            if topic_lower in entry["text"].lower():
+                timestamp = seconds_to_hms(entry["start"])
                 return {
                     "timestamp": timestamp,
                     "video_url": request.video_url,
